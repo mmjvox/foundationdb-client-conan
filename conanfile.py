@@ -5,15 +5,17 @@ from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
 from conan.tools.files import get, copy, save, load, replace_in_file
 from conan.tools.env import Environment
-from conan.errors import ConanInvalidConfiguration
+from conan.errors import ConanInvalidConfiguration, ConanException
 
 class FoundationDBClientConan(ConanFile):
     name = "foundationdb-client"
     version = "7.3.43"
     description = "FoundationDB C/C++ Client built from source (Zero System Dependencies)"
     license = "Apache-2.0"
-    package_type = "shared-library"
+    package_type = "library"
     settings = "os", "arch", "compiler", "build_type"
+    options = {"shared": [True, False]}
+    default_options = {"shared": False}
 
     def validate(self):
         if self.settings.os != "Linux":
@@ -195,6 +197,11 @@ exec "{dotnet_bin}" "$@"
         tc.generate()
 
     def build(self):
+        if not self.options.shared:
+            # Upstream only defines fdb_c as SHARED; build it as an archive instead.
+            bindings_c = os.path.join(self.source_folder, "bindings", "c", "CMakeLists.txt")
+            replace_in_file(self, bindings_c, "add_library(fdb_c SHARED", "add_library(fdb_c STATIC")
+            replace_in_file(self, bindings_c, "strip_debug_symbols(fdb_c)", "")
         cmake = CMake(self)
         cmake.configure()
         cmake.build(target="fdb_c")
@@ -205,11 +212,39 @@ exec "{dotnet_bin}" "$@"
              dst=os.path.join(self.package_folder, "include", "foundationdb"))
         copy(self, "*.h", src=os.path.join(self.build_folder, "bindings", "c", "foundationdb"),
              dst=os.path.join(self.package_folder, "include", "foundationdb"))
-        copy(self, "libfdb_c.so*", src=os.path.join(self.build_folder, "lib"),
-             dst=os.path.join(self.package_folder, "lib"))
+        if self.options.shared:
+            copy(self, "libfdb_c.so*", src=os.path.join(self.build_folder, "lib"),
+                 dst=os.path.join(self.package_folder, "lib"))
+        else:
+            self._merge_static_archives()
+
+    def _merge_static_archives(self):
+        # fdb_c's real code lives in fdbclient/fdbrpc/flow and contrib libs; merge them
+        # into a single libfdb_c.a so consumers need no link-order knowledge.
+        wanted = {"libfdb_c.a", "libfdbclient.a", "libfdbrpc.a", "libflow.a", "libeio.a",
+                  "libcoro.a", "libcrc32.a", "libmd5.a", "libstacktrace.a",
+                  "libfolly_memcpy.a", "liblibb64.a", "libfmt.a", "libfmtd.a"}
+        found = {}
+        for root, _, files in os.walk(self.build_folder):
+            for f in files:
+                if f in wanted:
+                    found[f] = os.path.join(root, f)
+        if "libfdb_c.a" not in found:
+            raise ConanException("libfdb_c.a was not produced by the static build")
+        self.output.info("Merging static archives: " + ", ".join(sorted(found)))
+        libdir = os.path.join(self.package_folder, "lib")
+        os.makedirs(libdir, exist_ok=True)
+        out = os.path.join(libdir, "libfdb_c.a")
+        mri = "create {}\n".format(out)
+        mri += "".join("addlib {}\n".format(p) for _, p in sorted(found.items()))
+        mri += "save\nend\n"
+        self.run(f"printf '%s' '{mri}' | ar -M")
+        self.run(f"ranlib {out}")
 
     def package_info(self):
         self.cpp_info.libs = ["fdb_c"]
         self.cpp_info.set_property("cmake_file_name", "FoundationDBClient")
         self.cpp_info.set_property("cmake_target_name", "FoundationDB::fdb_c")
         self.cpp_info.system_libs = ["pthread", "dl", "m", "rt"]
+        if not self.options.shared:
+            self.cpp_info.system_libs.append("stdc++")
