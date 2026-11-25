@@ -1,0 +1,19 @@
+sources:
+  "7.3.43":
+    url: "https://github.com/apple/foundationdb/archive/refs/tags/7.3.43.tar.gz"
+    sha256: "0fa8b724c8e44564b01d35062a302f50bcd4065b88c9b400be8dcb0d51711571"
+  "7.4.8":
+    url: "https://github.com/apple/foundationdb/archive/refs/tags/7.4.8.tar.gz"
+    sha256: "b870ce9ad854bd69127f44a992bc33024f3e859dd033de544e2b3c2341a13b8e"
+patches:
+  "7.3.43":
+    - patch_file: "patches/7.3.43-0001-conan-build.patch"
+      patch_description: "Use Conan dependencies, disable non-client targets, and fix fmt includes"
+      patch_type: "conan"
+  "7.4.8":
+    - patch_file: "patches/7.4.8-0001-conan-build.patch"
+      patch_description: "Use Conan dependencies and disable non-client targets"
+      patch_type: "conan"
+    - patch_file: "patches/7.4.8-0002-fix-find-coroutines.patch"
+      patch_description: "Ensure Coroutines_FOUND normal variable is updated under CMP0126"
+      patch_type: "portability"

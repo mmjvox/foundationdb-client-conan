@@ -1,0 +1,90 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -178,23 +178,39 @@
+   include_directories(/usr/local/include)
+ endif()
+ 
+-include(CompileBoost)
+-include(GetMsgpack)
++find_package(Boost REQUIRED)
++find_package(msgpack REQUIRED)
++add_library(boost_target INTERFACE)
++target_link_libraries(boost_target INTERFACE boost::boost)
++add_library(boost_asio INTERFACE)
++target_link_libraries(boost_asio INTERFACE boost::boost)
++macro(add_fdbclient_test)
++endmacro()
++macro(add_unavailable_fdbclient_test)
++endmacro()
++macro(add_fdbclient_link_test)
++endmacro()
++macro(add_fdb_test)
++endmacro()
++macro(add_python_venv_test)
++endmacro()
++add_library(msgpack INTERFACE)
++target_link_libraries(msgpack INTERFACE msgpack-cxx)
+ add_subdirectory(contrib)
+ add_subdirectory(flow)
+ add_subdirectory(fdbrpc)
+ add_subdirectory(fdbclient)
+-add_subdirectory(fdbserver)
+-add_subdirectory(fdbcli)
++# add_subdirectory(fdbserver)
++# add_subdirectory(fdbcli)
+ if(NOT WIN32)
+-  add_subdirectory(fdbmonitor)
++#   add_subdirectory(fdbmonitor)
+ else()
+-  add_subdirectory(fdbservice)
++#   add_subdirectory(fdbservice)
+ endif()
+-add_subdirectory(fdbbackup)
+-add_subdirectory(metacluster)
+-add_subdirectory(tests)
+-add_subdirectory(flowbench EXCLUDE_FROM_ALL)
++# add_subdirectory(fdbbackup)
++# add_subdirectory(metacluster)
++# add_subdirectory(tests)
++# add_subdirectory(flowbench EXCLUDE_FROM_ALL)
+ if(WITH_PYTHON AND WITH_C_BINDING)
+   add_subdirectory(bindings)
+ endif()
+--- a/bindings/CMakeLists.txt
++++ b/bindings/CMakeLists.txt
+@@ -1,21 +1 @@
+ add_subdirectory(c)
+-if(NOT OPEN_FOR_IDE)
+-  # flow bindings currently doesn't support that
+-  add_subdirectory(flow)
+-endif()
+-if(WITH_PYTHON_BINDING)
+-  add_subdirectory(python)
+-endif()
+-if(WITH_JAVA_BINDING)
+-  add_subdirectory(java)
+-endif()
+-if(WITH_GO_BINDING AND NOT OPEN_FOR_IDE)
+-  add_subdirectory(go)
+-endif()
+-if(WITH_RUBY_BINDING)
+-  add_subdirectory(ruby)
+-endif()
+-if(NOT WIN32 AND NOT OPEN_FOR_IDE)
+-  package_bindingtester()
+-  package_bindingtester2()
+-endif()
+--- a/fdbrpc/IPAllowList.cpp
++++ b/fdbrpc/IPAllowList.cpp
+@@ -1,3 +1,4 @@
++#include <fmt/ranges.h>
+ /*
+  * IPAllowList.cpp
+  *
+--- a/fdbrpc/TokenCache.actor.cpp
++++ b/fdbrpc/TokenCache.actor.cpp
+@@ -1,3 +1,4 @@
++#include <fmt/ranges.h>
+ #include "fdbrpc/Base64Encode.h"
+ #include "fdbrpc/Base64Decode.h"
+ #include "fdbrpc/FlowTransport.h"

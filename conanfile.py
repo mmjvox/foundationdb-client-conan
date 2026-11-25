@@ -1,21 +1,29 @@
 import os
-import re
 import stat
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
-from conan.tools.files import get, copy, save, load, replace_in_file
+from conan.tools.files import (
+    get, copy, save, replace_in_file,
+    export_conandata_patches, apply_conandata_patches,
+)
 from conan.tools.env import Environment
+from conan.tools.scm import Version
 from conan.errors import ConanInvalidConfiguration, ConanException
 
 class FoundationDBClientConan(ConanFile):
     name = "foundationdb-client"
-    version = "7.3.43"
     description = "FoundationDB C/C++ Client built from source (Zero System Dependencies)"
     license = "Apache-2.0"
     package_type = "library"
     settings = "os", "arch", "compiler", "build_type"
     options = {"shared": [True, False]}
     default_options = {"shared": False}
+
+    def set_version(self):
+        self.version = self.version or "7.4.8"
+
+    def export_sources(self):
+        export_conandata_patches(self)
 
     def validate(self):
         if self.settings.os != "Linux":
@@ -30,66 +38,18 @@ class FoundationDBClientConan(ConanFile):
         self.requires("openssl/3.2.1")
         self.requires("toml11/3.8.1")
         self.requires("msgpack-cxx/6.1.0")
+        if Version(self.version) >= "7.4.0":
+            self.requires("fmt/11.1.4")
 
     def layout(self):
         cmake_layout(self, src_folder="src")
 
     def source(self):
-        url = f"https://github.com/apple/foundationdb/archive/refs/tags/{self.version}.tar.gz"
-        get(self, url, strip_root=True)
-
-        # ۱. جایگزینی دانلودر داخلی Boost با پکیج آماده Conan و خنثی کردن تمام ماکروهای تست
-        cmake_file = os.path.join(self.source_folder, "CMakeLists.txt")
-        replace_in_file(
-            self,
-            cmake_file,
-            "include(CompileBoost)",
-            "find_package(Boost REQUIRED)\n"
-            "find_package(msgpack REQUIRED)\n"
-            "add_library(boost_target INTERFACE)\n"
-            "target_link_libraries(boost_target INTERFACE boost::boost)\n"
-            "add_library(boost_asio INTERFACE)\n"
-            "target_link_libraries(boost_asio INTERFACE boost::boost)\n"
-            "macro(add_fdbclient_test)\nendmacro()\n"
-            "macro(add_unavailable_fdbclient_test)\nendmacro()\n"
-            "macro(add_fdbclient_link_test)\nendmacro()\n"
-            "macro(add_fdb_test)\nendmacro()\n"
-            "macro(add_python_venv_test)\nendmacro()"
-        )
-
-        replace_in_file(
-            self,
-            cmake_file,
-            "include(GetMsgpack)",
-            "add_library(msgpack INTERFACE)\n"
-            "target_link_libraries(msgpack INTERFACE msgpack-cxx)"
-        )
-
-        # ۲. حذف قطعی تمام add_subdirectory های غیرضروری (سرور، بنچمارک، تست و...)
-        content = load(self, cmake_file)
-        unneeded = (
-            "fdbserver", "fdbcli", "fdbbackup", "fdbmonitor",
-            "fdbservice", "tests", "flowbench", "metacluster"
-        )
-        filtered_lines = []
-        for line in content.splitlines():
-            if re.match(r"\s*add_subdirectory\(\s*(%s)[\s)]" % "|".join(unneeded), line):
-                filtered_lines.append(f"# {line}")
-            else:
-                filtered_lines.append(line)
-        save(self, cmake_file, "\n".join(filtered_lines))
-
-        # fmt 8.1.1: fmt::join over ranges lives in <fmt/ranges.h>
-        for rel in ("fdbrpc/IPAllowList.cpp", "fdbrpc/TokenCache.actor.cpp"):
-            f = os.path.join(self.source_folder, rel)
-            save(self, f, "#include <fmt/ranges.h>\n" + load(self, f))
-
-        # ۳. نگه داشتن فقط بایندینگ C در bindings/CMakeLists.txt
-        bindings_cmake = os.path.join(self.source_folder, "bindings", "CMakeLists.txt")
-        save(self, bindings_cmake, "add_subdirectory(c)\n")
+        get(self, **self.conan_data["sources"][self.version], strip_root=True)
+        apply_conandata_patches(self)
 
     def generate(self):
-        # ۱. استفاده از کش دائمی .NET در ~/.conan2/dotnet_cache
+        # 1. Use persistent .NET cache in ~/.conan2/dotnet_cache
         persistent_cache = os.path.expanduser("~/.conan2/dotnet_cache/8.0.404")
         dotnet_bin = os.path.join(persistent_cache, "dotnet")
 
@@ -101,7 +61,7 @@ class FoundationDBClientConan(ConanFile):
         else:
             self.output.info(f"Using cached portable .NET SDK from {persistent_cache}")
 
-        # ۲. ساختن شبیه‌ساز پرتابل mono و mcs
+        # 2. Create portable shims for mono and mcs
         shim_dir = os.path.join(self.build_folder, "mono_shims")
         os.makedirs(shim_dir, exist_ok=True)
 
@@ -170,7 +130,7 @@ exec "{dotnet_bin}" "$@"
         env.define("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
         env.vars(self).save_script("conanbuild_dotnet")
 
-        # ۳. تنظیمات CMake
+        # 3. CMake configuration
         deps = CMakeDeps(self)
         deps.generate()
 
@@ -188,11 +148,12 @@ exec "{dotnet_bin}" "$@"
         tc.variables["WITH_ROCKSDB"] = False
         tc.variables["WITH_ROCKSDB_EXPERIMENTAL"] = False
         tc.variables["WITH_CONAN"] = True
-        tc.variables["CMAKE_DISABLE_FIND_PACKAGE_fmt"] = True  # force bundled fmt 8.1.1 (contrib), not system fmt
+        if Version(self.version) < "7.4.0":
+            tc.variables["CMAKE_DISABLE_FIND_PACKAGE_fmt"] = True  # force bundled fmt 8.1.1 (contrib), not system fmt
         tc.variables["USE_WERROR"] = False
         tc.variables["RUN_JUNIT_TESTS"] = False
 
-        # سازگاری سورس FDB 7.3 با GCC 16
+        # Compatibility of FDB source with GCC 16
         tc.blocks["cmake_flags_init"].values["CMAKE_CXX_FLAGS"] = "-include cstdint"
         tc.generate()
 
