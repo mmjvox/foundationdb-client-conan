@@ -148,6 +148,7 @@ exec "{dotnet_bin}" "$@"
         tc.variables["WITH_ROCKSDB"] = False
         tc.variables["WITH_ROCKSDB_EXPERIMENTAL"] = False
         tc.variables["WITH_CONAN"] = True
+        tc.variables["USE_JEMALLOC"] = False
         if Version(self.version) < "7.4.0":
             tc.variables["CMAKE_DISABLE_FIND_PACKAGE_fmt"] = True  # force bundled fmt 8.1.1 (contrib), not system fmt
         tc.variables["USE_WERROR"] = False

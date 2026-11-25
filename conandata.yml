@@ -17,3 +17,6 @@ patches:
     - patch_file: "patches/7.4.8-0002-fix-find-coroutines.patch"
       patch_description: "Ensure Coroutines_FOUND normal variable is updated under CMP0126"
       patch_type: "portability"
+    - patch_file: "patches/7.4.8-0003-fix-openssl-no-load-config.patch"
+      patch_description: "Suppress automatic OpenSSL config loading to avoid distro crypto-policy conflicts"
+      patch_type: "portability"

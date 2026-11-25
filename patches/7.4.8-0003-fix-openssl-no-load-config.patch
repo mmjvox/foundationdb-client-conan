@@ -1,0 +1,20 @@
+--- a/flow/Net2.actor.cpp
++++ b/flow/Net2.actor.cpp
+@@ -19,4 +19,8 @@
+  */
+ 
++#ifdef HAVE_OPENSSL
++#include <openssl/crypto.h>
++#include <openssl/ssl.h>
++#endif
+ #include "boost/asio/buffer.hpp"
+ #include "boost/asio/ip/address.hpp"
+@@ -2298,4 +2302,8 @@
+ 
+ INetwork* newNet2(const TLSConfig& tlsConfig, bool useThreadPool, bool useMetrics) {
++#ifdef HAVE_OPENSSL
++	OPENSSL_init_crypto(OPENSSL_INIT_NO_LOAD_CONFIG, nullptr);
++	OPENSSL_init_ssl(OPENSSL_INIT_NO_LOAD_CONFIG, nullptr);
++#endif
+ 	try {
+ 		N2::g_net2 = new N2::Net2(tlsConfig, useThreadPool, useMetrics);
